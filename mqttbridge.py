@@ -136,8 +136,6 @@ def main(broker, port):
 
 if __name__ == '__main__':
     import argparse
-    broker = "127.0.0.1"
-    port = 1883
 
     parser = argparse.ArgumentParser(description='Serial to MQTT bridge for Ninjablock cape')
     parser.add_argument('-b', '--broker', default="127.0.0.1", help='MQTT broker host (default: %(default)s)')
