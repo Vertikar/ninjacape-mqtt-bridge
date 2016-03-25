@@ -24,6 +24,6 @@ Messages to be sent out on 433Mhz should be pushlished to:
 <ul><li><del>Make it daemon-ised.  At the moment I'm just running it in a 'screen' instance.</del></li>
 <li><del>Catch invalid JSON messages and throw an error, instead of just ignoring it.</del></li>
 <li><del><a href="https://discuss.ninjablocks.com/t/openhab-vs-open-source-sphere/3680/55">Update the MQTT message to have an additional layer for the 'gid' instead of assuming its zero. </a></del></li>
-<li></del>Make the MQTT topic configurable, some brokers (i.e. eventghost) require a <i>leading</i> slash to work</del></li> 
+<li><del>Make the MQTT topic configurable, some brokers (i.e. eventghost) require a <i>leading</i> slash to work</del></li> 
 </ul>
 </html>
