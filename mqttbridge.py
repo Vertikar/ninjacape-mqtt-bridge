@@ -61,7 +61,7 @@ def mqtt_to_json(msg):
     return '{"DEVICE": [{"G":"%s","V":0,"D":%s,"DA":"%s"}]}' % (topics[3], topics[2], msg.payload)
 
 
-def serial_read_and_publish(ser, client, queue):
+def serial_read_and_publish(ser, client, topic, queue):
     ser.reset_input_buffer()
 
     while True:
@@ -77,7 +77,7 @@ def serial_read_and_publish(ser, client, queue):
             device = str(json_data[key][0]['D'])
             gid = str(json_data[key][0]['G'])
             data = str(json_data[key][0]['DA'])
-            result, mid = client.publish("ninjaCape/input/%s/%s" % (device, gid), data)
+            result, mid = client.publish("%s/input/%s/%s" % (topic, device, gid), data)
             try:
                 queue.put_nowait((key, mid))
             except Queue.Full:
@@ -88,7 +88,7 @@ def serial_read_and_publish(ser, client, queue):
 
 
 ############ MAIN PROGRAM START
-def main(broker, port):
+def main(broker, port, topic):
     try:
         logging.debug("Connecting to serial device %s", TTY)
         ser = serial.Serial(TTY, 9600, timeout=None)
@@ -106,27 +106,26 @@ def main(broker, port):
         client.on_subscribe = on_subscribe
         client.on_log = on_log
         client.on_message = on_message
-        client.message_callback_add("ninjaCape/output/#", on_message_output)
+        client.message_callback_add("%s/output/#" % topic, on_message_output)
 
         client.connect(broker, port, 60)
         client.loop_start()
 
-        serial_thread = threading.Thread(target=serial_read_and_publish, args=(ser, client, queue))
+        serial_thread = threading.Thread(target=serial_read_and_publish, args=(ser, client, topic, queue))
         serial_thread.daemon = True
         serial_thread.start()
 
         while True:  # main thread
+            try:
+                data_type, mid = queue.get_nowait()
+                logging.debug("Received %s %s from output thread", data_type, mid)
+                if data_type != 'ACK':
+                    time.sleep(0.05)
+            except Queue.Empty:
+                pass
             if len(output) > 0:
                 ser.write(mqtt_to_json(output.pop()))
-                try:
-                    data_type, mid = queue.get_nowait()
-                    logging.debug("Received %s %s from output thread", data_type, mid)
-                    if data_type == 'ACK':
-                        continue
-                except Queue.Empty:
-                    # give the serial buffer time to flush
-                    while ser.out_waiting:
-                        time.sleep(0.05)
+
     finally:
         logging.info("Shutting down and cleaning up")
         ser.close()
@@ -140,6 +139,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Serial to MQTT bridge for Ninjablock cape')
     parser.add_argument('-b', '--broker', default="127.0.0.1", help='MQTT broker host (default: %(default)s)')
     parser.add_argument('-p', '--port', default=1883, type=int, help='MQTT broker port (default: %(default)s)')
+    parser.add_argument('-t', '--topic', default='ninjaCape', help='MQTT topic (default: %(default)s)')
     parser.add_argument("-l",
                         "--log",
                         dest="loglevel",
@@ -151,4 +151,4 @@ if __name__ == '__main__':
                         format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
 
-    main(broker=args.broker, port=args.port)
+    main(broker=args.broker, port=args.port, topic=args.topic)
