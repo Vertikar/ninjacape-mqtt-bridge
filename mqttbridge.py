@@ -23,6 +23,7 @@ import paho.mqtt.client as mqtt
 TTY = '/dev/ttyO1'  # '/dev/ttyAMA0' for RPi
 output = []
 
+shutdown_event = threading.Event()
 
 def on_connect(client, userdata, rc):
     logging.info('Connected to MQTT broker with result code %s', rc)
@@ -30,7 +31,11 @@ def on_connect(client, userdata, rc):
 
 
 def on_disconnect(client, userdata, rc):
-    logging.debug('Disconnected with result code %s', rc)
+    if rc != 0:
+        logging.warning('Unexpected disconnection with result code %s', rc)
+        shutdown_event.set()
+    else:
+        logging.debug('Disconnected with result code %s', rc)
 
 
 def on_publish(client, userdata, mid):
@@ -88,7 +93,7 @@ def serial_read_and_publish(ser, client, topic, queue):
 
 
 ############ MAIN PROGRAM START
-def main(broker, port, topic):
+def main(broker, port, protocol, topic):
     try:
         logging.debug("Connecting to serial device %s", TTY)
         ser = serial.Serial(TTY, 9600, timeout=None)
@@ -99,7 +104,7 @@ def main(broker, port, topic):
     try:
         queue = Queue.Queue()
 
-        client = mqtt.Client()
+        client = mqtt.Client(protocol=protocol)
         client.on_connect = on_connect
         client.on_disconnect = on_disconnect
         client.on_publish = on_publish
@@ -115,7 +120,7 @@ def main(broker, port, topic):
         serial_thread.daemon = True
         serial_thread.start()
 
-        while True:  # main thread
+        while not shutdown_event.is_set():  # main thread
             try:
                 data_type, mid = queue.get_nowait()
                 logging.debug("Received %s %s from output thread", data_type, mid)
@@ -125,6 +130,8 @@ def main(broker, port, topic):
                 pass
             if len(output) > 0:
                 ser.write(mqtt_to_json(output.pop()))
+    except (KeyboardInterrupt, SystemExit):
+        shutdown_event.set()
 
     finally:
         logging.info("Shutting down and cleaning up")
@@ -140,6 +147,11 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--broker', default="127.0.0.1", help='MQTT broker host (default: %(default)s)')
     parser.add_argument('-p', '--port', default=1883, type=int, help='MQTT broker port (default: %(default)s)')
     parser.add_argument('-t', '--topic', default='ninjaCape', help='MQTT topic (default: %(default)s)')
+    parser.add_argument('--protocol',
+                        choices=[mqtt.MQTTv31, mqtt.MQTTv311],
+                        default=mqtt.MQTTv31,
+                        type=int,
+                        help='MQTT protocol (default: %(default)s)')
     parser.add_argument("-l",
                         "--log",
                         dest="loglevel",
@@ -151,4 +163,4 @@ if __name__ == '__main__':
                         format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
 
-    main(broker=args.broker, port=args.port, topic=args.topic)
+    main(broker=args.broker, port=args.port, protocol=args.protocol, topic=args.topic)
